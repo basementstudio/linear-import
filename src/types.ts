@@ -25,7 +25,7 @@ export interface Comment {
   /** Comment's body in markdown */
   body?: string;
   /** User who posted the comments */
-  userId: string;
+  userId?: string;
   /** When the comment was created. */
   createdAt?: Date;
 }

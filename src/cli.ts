@@ -8,16 +8,24 @@ import { asanaCsvImport } from './importers/asanaCsv';
 import { pivotalCsvImport } from './importers/pivotalCsv';
 import { trelloJsonImport } from './importers/trelloJson';
 
+require('dotenv').config();
+
 inquirer.registerPrompt('filePath', require('inquirer-file-path'));
 
 (async () => {
   try {
+    const { LINEAR_API_KEY } = process.env;
+
+    if (!LINEAR_API_KEY) {
+      console.log(
+        chalk.red(
+          'LINEAR_API_KEY not found. Please create a .env file with LINEAR_API_KEY=<your-api-key>'
+        )
+      );
+      return;
+    }
+
     const importAnswers = await inquirer.prompt<ImportAnswers>([
-      {
-        type: 'input',
-        name: 'linearApiKey',
-        message: 'Input your Linear API key (https://linear.app/settings/api)',
-      },
       {
         type: 'list',
         name: 'service',
@@ -71,7 +79,7 @@ inquirer.registerPrompt('filePath', require('inquirer-file-path'));
     }
 
     if (importer) {
-      await importIssues(importAnswers.linearApiKey, importer);
+      await importIssues(LINEAR_API_KEY, importer);
     }
   } catch (e) {
     // Deal with the fact the chain failed

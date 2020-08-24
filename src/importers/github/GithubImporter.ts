@@ -1,5 +1,6 @@
 import { githubClient } from './client';
 import { Importer, ImportResult } from '../../types';
+import { importedIdPrefix } from '../../utils/constants';
 
 interface GITHUB_ISSUE {
   id: string;
@@ -140,19 +141,27 @@ export class GithubImporter implements Importer {
     };
 
     for (const issue of issueData) {
+      const ghIdComment = {
+        body: `${importedIdPrefix} ${issue.id}`,
+        createdAt: new Date(),
+      };
+
       importData.issues.push({
         title: issue.title,
         description: `${issue.body}\n\n[View original issue in GitHub](${issue.url})`,
         url: issue.url,
         comments: issue.comments.nodes
-          ? issue.comments.nodes
-              .filter(comment => comment.author.id)
-              .map(comment => ({
-                body: comment.body,
-                userId: comment.author.id as string,
-                createdAt: new Date(comment.createdAt),
-              }))
-          : [],
+          ? [
+              ...issue.comments.nodes
+                .filter(comment => comment.author.id)
+                .map(comment => ({
+                  body: comment.body,
+                  userId: comment.author.id as string,
+                  createdAt: new Date(comment.createdAt),
+                })),
+              ghIdComment,
+            ]
+          : [ghIdComment],
         labels: issue.labels.nodes
           ? issue.labels.nodes.map(label => label.id)
           : [],

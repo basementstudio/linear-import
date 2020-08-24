@@ -6,6 +6,7 @@ import linearClient from './client';
 import chalk from 'chalk';
 import * as inquirer from 'inquirer';
 import _ from 'lodash';
+import { importedIdPrefix } from './utils/constants';
 
 interface ImportAnswers {
   newTeam: boolean;
@@ -57,6 +58,11 @@ interface TeamInfoResponse {
       nodes: {
         id: string;
         name: string;
+      }[];
+    };
+    issues: {
+      nodes: {
+        description: string;
       }[];
     };
   };
@@ -244,6 +250,11 @@ export const importIssues = async (apiKey: string, importer: Importer) => {
           name
         }
       }
+      issues {
+        nodes {
+          description
+        }
+      }
     }
   }`)) as TeamInfoResponse;
 
@@ -311,6 +322,31 @@ export const importIssues = async (apiKey: string, importer: Importer) => {
 
   // Create issues
   for (const issue of importData.issues) {
+    // Get github id from comment
+    let ghId: string = '';
+    if (issue.comments) {
+      const comment = issue.comments.find((c: any) => {
+        if (c.body) return c.body.includes(importedIdPrefix);
+      });
+      if (comment && comment.body) {
+        ghId = comment.body.replace(importedIdPrefix, '');
+      }
+    }
+
+    // Check if there's an issue in linear with the same github id
+    const alreadyExists = teamInfo.team.issues.nodes.some(linearIssue => {
+      if (!linearIssue.description) return false;
+      if (linearIssue.description.includes(importedIdPrefix)) {
+        const ghIdFromComment = linearIssue.description.split(
+          importedIdPrefix
+        )[1];
+        return ghIdFromComment === ghId;
+      }
+      return false;
+    });
+
+    if (alreadyExists) continue;
+
     const issueDescription = issue.description
       ? await replaceImagesInMarkdown(linear, issue.description)
       : undefined;
@@ -333,13 +369,17 @@ export const importIssues = async (apiKey: string, importer: Importer) => {
       ? existingStateMap[issue.status.toLowerCase()]
       : undefined;
 
-    const existingAssigneeId: (string | undefined) = !!issue.assigneeId ?
-      existingUserMap[issue.assigneeId.toLowerCase()] : undefined;
+    const existingAssigneeId: string | undefined = !!issue.assigneeId
+      ? existingUserMap[issue.assigneeId.toLowerCase()]
+      : undefined;
 
-    const assigneeId: (string | undefined) = existingAssigneeId ||
-      importAnswers.selfAssign ? me :
-      !!importAnswers.targetAssignee && importAnswers.targetAssignee.length > 0
-        ? importAnswers.targetAssignee : undefined
+    const assigneeId: string | undefined =
+      existingAssigneeId || importAnswers.selfAssign
+        ? me
+        : !!importAnswers.targetAssignee &&
+          importAnswers.targetAssignee.length > 0
+        ? importAnswers.targetAssignee
+        : undefined;
 
     await linear(
       `
@@ -396,13 +436,15 @@ const buildComments = async (
 ) => {
   const newComments: string[] = [];
   for (const comment of comments) {
-    const user = importData.users[comment.userId];
+    const user = comment.userId ? importData.users[comment.userId] : null;
     const date = comment.createdAt
       ? comment.createdAt.toISOString().split('T')[0]
       : undefined;
 
     const body = await replaceImagesInMarkdown(client, comment.body || '');
-    newComments.push(`**${user.name}**${' ' + date}\n\n${body}\n`);
+    newComments.push(
+      `**${user ? user.name : 'Unknown user'}**${' ' + date}\n\n${body}\n`
+    );
   }
   return `${description}\n\n---\n\n${newComments.join('\n\n')}`;
 };
